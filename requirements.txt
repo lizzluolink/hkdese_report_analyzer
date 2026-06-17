@@ -1,0 +1,7 @@
+streamlit
+pdfplumber
+pandas
+openpyxl
+altair
+groq
+reportlab
