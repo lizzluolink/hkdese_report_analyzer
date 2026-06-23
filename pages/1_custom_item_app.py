@@ -66,13 +66,11 @@ if not df_item_c.empty:
 
     st.markdown("---")
     st.info("🏷️ 1. 建立自訂欄位並為題目設定分類 Create Custom Fields and Set Categories for Questions")
-    sec1 = st.container(border=True)
-    sec2 = st.container(border=True)
-    sec3 = st.container(border=True)
+    col1, col2, col3 = st.columns(3, border=True)
 
-    with sec1:
+    with col1:
         st.subheader("1.1 建立自訂欄位 item_custom_cols")
-        st.caption("自訂欄位可用於為每題設定不同的分類，例如「試卷」、「題型」、「難度」等，以協助後續的篩選和排序。")
+        st.caption("自訂欄位可用於為每題設定不同的分類，例如「試卷」、「題型」、「難度」等。")
         with st.form("item_add_field_form", clear_on_submit=True, border=False):
             new_col = st.text_input("輸入新自訂欄位名稱 | Enter New Custom Field Name", key="new_col_input_item")
             submitted = st.form_submit_button("➕ 新增欄位 Add Field")
@@ -90,23 +88,41 @@ if not df_item_c.empty:
 
         if st.session_state.item_custom_cols:
             st.success(f"已建立欄位 | Created Fields: {', '.join(st.session_state.item_custom_cols)}")
+            
+            st.divider()
+            st.subheader("🗑️ 刪除欄位 Delete Field", anchor=False)
+            col_to_delete = st.selectbox("選擇要刪除的欄位 | Select Field to Delete", [""] + st.session_state.item_custom_cols, key="item_delete_field_select")
+            if col_to_delete:
+                if st.button("⚠️ 確認刪除 Confirm Delete", key=f"item_delete_field_btn_{col_to_delete}"):
+                    st.session_state.item_custom_cols.remove(col_to_delete)
+                    if col_to_delete in st.session_state.item_col_options_history:
+                        del st.session_state.item_col_options_history[col_to_delete]
+                    for idx in st.session_state.item_custom_values:
+                        st.session_state.item_custom_values[idx].pop(col_to_delete, None)
+                    st.success(f"已刪除欄位「{col_to_delete}」及其相關資料。| Field '{col_to_delete}' and related data deleted.")
+                    st.rerun()
 
-    with sec2:
+    with col2:
         st.subheader("1.2 管理欄位分類選項 item_col_options_history")
-        st.caption("在此管理每個自訂欄位的分類選項，讓第 3 區只負責將既有分類套用到題目。")
+        st.caption("為每個自訂欄位管理分類選項。")
         if not st.session_state.item_custom_cols:
-            st.warning("尚未建立任何自訂欄位，請先在 1.1 區建立。| No custom fields yet. Please create one in section 1.1 first.")
+            st.warning("尚未建立任何自訂欄位，請先在 1.1 區建立。| No custom fields yet.")
         else:
+            st.write("**欄位下的子類別 | Field Options:**")
+            for field in st.session_state.item_custom_cols:
+                opts = st.session_state.item_col_options_history.get(field, [])
+                if opts:
+                    st.write(f"• {field}: {', '.join(opts)}")
+                else:
+                    st.write(f"• {field}: _(尚未設定選項 | No options set)_")
+            
+            st.divider()
             selected_option_field = st.selectbox("選擇要管理的欄位 | Select Field to Manage", st.session_state.item_custom_cols, key="item_option_field_select")
-            history_opts = st.session_state.item_col_options_history.get(selected_option_field, [])
-            if history_opts:
-                st.write(f"目前分類選項 | Current Options: {', '.join(history_opts)}")
-            else:
-                st.info("目前尚未設定任何分類選項。| No options have been set yet.")
-
+            
+            st.subheader("➕ 新增分類 Add Options", anchor=False)
             with st.form("item_add_option_form", clear_on_submit=True, border=False):
                 new_options_raw = st.text_input("輸入新分類，逗號分隔 | Enter new option(s), comma-separated", key="new_item_option_input")
-                add_options = st.form_submit_button("➕ 新增分類 Add Options")
+                add_options = st.form_submit_button("➕ 新增 Add")
                 if add_options:
                     candidates = [opt.strip() for opt in new_options_raw.split(",") if opt.strip()]
                     added = []
@@ -118,18 +134,35 @@ if not df_item_c.empty:
                             st.session_state.item_col_options_history[selected_option_field].append(opt)
                             added.append(opt)
                     if added:
-                        st.success(f"已新增分類: {', '.join(added)}")
+                        st.success(f"已新增: {', '.join(added)}")
                     if skipped:
-                        st.info(f"已略過重複分類: {', '.join(skipped)}")
+                        st.info(f"已略過重複: {', '.join(skipped)}")
                     if not added and not skipped:
                         st.warning("未輸入有效分類。| No valid options entered.")
+            
+            st.divider()
+            st.subheader("🗑️ 刪除分類 Delete Option", anchor=False)
+            history_opts = st.session_state.item_col_options_history.get(selected_option_field, [])
+            if history_opts:
+                opt_to_delete = st.selectbox("選擇要刪除的分類 | Select Option to Delete", [""] + history_opts, key="item_delete_option_select")
+                if opt_to_delete:
+                    if st.button("⚠️ 確認刪除 Confirm Delete", key=f"item_delete_option_btn_{selected_option_field}_{opt_to_delete}"):
+                        st.session_state.item_col_options_history[selected_option_field].remove(opt_to_delete)
+                        for idx in st.session_state.item_custom_values:
+                            if selected_option_field in st.session_state.item_custom_values[idx]:
+                                if st.session_state.item_custom_values[idx][selected_option_field] == opt_to_delete:
+                                    del st.session_state.item_custom_values[idx][selected_option_field]
+                        st.success(f"已刪除分類「{opt_to_delete}」及其相關值。| Option '{opt_to_delete}' and related values deleted.")
+                        st.rerun()
+            else:
+                st.info("此欄位尚無分類可刪除。| No options to delete for this field.")
 
-    with sec3:
+    with col3:
         st.subheader("1.3 為題目填入分類 item_custom_values")
-        st.caption("選擇題目後，從已設定的分類選項中為每題指定值。第 3 區不會再新增新的分類選項。")
+        st.caption("選擇題目後，從已設定的分類選項中為每題指定值。")
         question_options = [f"{row['題號']} [{row['row_index']}]" for _, row in df_item_c.iterrows()]
         seq_map = {f"{row['題號']} [{row['row_index']}]": row['row_index'] for _, row in df_item_c.iterrows()}
-        sel_qs_display = st.multiselect("選擇題號（可選多於一項） | Select Question item(s) (You may select more than one option)", question_options, default=question_options[:1], key="item_q_sel")
+        sel_qs_display = st.multiselect("選擇題號（可選多於一項） | Select Question(s)", question_options, default=question_options[:1], key="item_q_sel")
         sel_qs = [seq_map[q] for q in sel_qs_display]
 
         if st.session_state.item_clear_inputs:
@@ -140,7 +173,7 @@ if not df_item_c.empty:
 
         if sel_qs_display:
             selected_display = ", ".join(sel_qs_display)
-            st.write(f"**正在編輯 Editing: {selected_display}**")
+            st.write(f"**編輯 Editing: {selected_display}**")
             all_values = [st.session_state.item_custom_values.get(idx, {}) for idx in sel_qs]
             current_values = {}
             for col in st.session_state.item_custom_cols:
@@ -164,25 +197,24 @@ if not df_item_c.empty:
             sel_val = st.selectbox(f"{col}:", options=options, index=default_idx, key=sel_key)
             input_results[col] = sel_val
 
-        submit_col, note_col = st.columns([1, 1])
-        with submit_col:
-            submit_btn = st.button("📥 儲存設定 Save Settings", key=f"item_save_btn_{'_'.join(str(x) for x in sel_qs)}")
-        save_note = note_col.empty()
-        if st.session_state.item_save_note:
-            save_note.caption(st.session_state.item_save_note)
+        if sel_qs_display:
+            submit_btn = st.button("📥 儲存設定 Save Settings", key=f"item_save_btn_{'_'.join(str(x) for x in sel_qs)}", use_container_width=True)
 
-        if submit_btn and sel_qs:
-            for idx in sel_qs:
-                st.session_state.item_custom_values.setdefault(idx, {})
-                for col, val in input_results.items():
-                    if val:
-                        st.session_state.item_custom_values[idx][col] = val
-                    else:
-                        st.session_state.item_custom_values[idx].pop(col, None)
-            st.session_state["item_last_saved_q"] = sel_qs
-            st.session_state["item_save_note"] = f"已為以下題目儲存分類設定 | Saved custom category settings for: {selected_display}"
-            st.session_state.item_clear_inputs = True
-            st.rerun()
+            if st.session_state.item_save_note:
+                st.caption(st.session_state.item_save_note)
+
+            if submit_btn and sel_qs:
+                for idx in sel_qs:
+                    st.session_state.item_custom_values.setdefault(idx, {})
+                    for col, val in input_results.items():
+                        if val:
+                            st.session_state.item_custom_values[idx][col] = val
+                        else:
+                            st.session_state.item_custom_values[idx].pop(col, None)
+                st.session_state["item_last_saved_q"] = sel_qs
+                st.session_state["item_save_note"] = f"已為以下題目儲存分類設定 | Saved custom category settings for: {selected_display}"
+                st.session_state.item_clear_inputs = True
+                st.rerun()
 
     st.markdown("---")
     st.info("📍 2. 校本自訂分析 School-based Customize Analysis")
