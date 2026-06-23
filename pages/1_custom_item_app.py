@@ -113,14 +113,6 @@ if not df_item_c.empty:
         if not st.session_state.item_custom_cols:
             st.warning("尚未建立任何自訂欄位，請先在 1.1 區建立。| No custom fields yet.")
         else:
-            st.write("**欄位下的子類別 | Field Options:**")
-            for field in st.session_state.item_custom_cols:
-                opts = st.session_state.item_col_options_history.get(field, [])
-                if opts:
-                    st.write(f"• {field}: {', '.join(opts)}")
-                else:
-                    st.write(f"• {field}: _(尚未設定選項 | No options set)_")
-            
             selected_option_field = st.selectbox("選擇要管理的欄位 | Select Field to Manage", st.session_state.item_custom_cols, key="item_option_field_select")
             
             st.caption("➕ 新增分類 Add Options")
@@ -139,10 +131,19 @@ if not df_item_c.empty:
                             added.append(opt)
                     if added:
                         st.success(f"已新增: {', '.join(added)}")
+                        st.rerun()
                     if skipped:
                         st.info(f"已略過重複: {', '.join(skipped)}")
                     if not added and not skipped:
                         st.warning("未輸入有效分類。| No valid options entered.")
+            
+            st.write("**欄位下的子類別 | Field Options:**")
+            for field in st.session_state.item_custom_cols:
+                opts = st.session_state.item_col_options_history.get(field, [])
+                if opts:
+                    st.write(f"• {field}: {', '.join(opts)}")
+                else:
+                    st.write(f"• {field}: _(尚未設定選項 | No options set)_")
             
             with st.expander("⚙️ 進階操作 Advanced Operations"):
                 st.caption("刪除分類 Delete Option")
