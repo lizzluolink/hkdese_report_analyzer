@@ -136,15 +136,16 @@ if not df_item_c.empty:
                         st.info(f"已略過重複: {', '.join(skipped)}")
                     if not added and not skipped:
                         st.warning("未輸入有效分類。| No valid options entered.")
+                        
+            with st.container(border=True):
+                st.markdown("**欄位下的子類別 | Field Options**")
+                for field in st.session_state.item_custom_cols:
+                    opts = st.session_state.item_col_options_history.get(field, [])
+                    if opts:
+                        st.markdown(f"- **{field}**: {', '.join(opts)}")
+                    else:
+                        st.markdown(f"- **{field}**: 尚未設定選項 | No options set")
 
-                    with st.container(border=True):
-                        st.markdown("**欄位下的子類別 | Field Options**")
-                        for field in st.session_state.item_custom_cols:
-                            opts = st.session_state.item_col_options_history.get(field, [])
-                            if opts:
-                                st.markdown(f"- **{field}**: {', '.join(opts)}")
-                            else:
-                                st.markdown(f"- **{field}**: 尚未設定選項 | No options set")
             
             with st.expander("⚙️ 進階操作 Advanced Operations"):
                 st.caption("刪除分類 Delete Option")
