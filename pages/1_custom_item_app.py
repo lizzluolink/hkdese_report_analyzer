@@ -89,18 +89,23 @@ if not df_item_c.empty:
         if st.session_state.item_custom_cols:
             st.success(f"已建立欄位 | Created Fields: {', '.join(st.session_state.item_custom_cols)}")
             
-            st.divider()
-            st.subheader("🗑️ 刪除欄位 Delete Field", anchor=False)
-            col_to_delete = st.selectbox("選擇要刪除的欄位 | Select Field to Delete", [""] + st.session_state.item_custom_cols, key="item_delete_field_select")
-            if col_to_delete:
-                if st.button("⚠️ 確認刪除 Confirm Delete", key=f"item_delete_field_btn_{col_to_delete}"):
-                    st.session_state.item_custom_cols.remove(col_to_delete)
-                    if col_to_delete in st.session_state.item_col_options_history:
-                        del st.session_state.item_col_options_history[col_to_delete]
-                    for idx in st.session_state.item_custom_values:
-                        st.session_state.item_custom_values[idx].pop(col_to_delete, None)
-                    st.success(f"已刪除欄位「{col_to_delete}」及其相關資料。| Field '{col_to_delete}' and related data deleted.")
-                    st.rerun()
+            with st.expander("⚙️ 進階操作 Advanced Operations"):
+                st.caption("刪除欄位 Delete Field")
+                col_to_delete = st.selectbox("選擇要刪除的欄位 | Select Field to Delete", [""] + st.session_state.item_custom_cols, key="item_delete_field_select")
+                if col_to_delete:
+                    affected_count = sum(1 for idx in st.session_state.item_custom_values if col_to_delete in st.session_state.item_custom_values.get(idx, {}))
+                    st.warning(f"此欄位已被 {affected_count} 題使用，刪除後會同時移除該欄位的所有分類設定。| This field is used by {affected_count} question(s). All related data will be deleted.")
+                    
+                    confirm_delete_field = st.checkbox("我明白刪除後不能復原 I understand deletion is irreversible", key=f"confirm_delete_field_{col_to_delete}")
+                    if confirm_delete_field:
+                        if st.button("⚠️ 確認刪除欄位 Confirm Delete Field", key=f"item_delete_field_btn_{col_to_delete}"):
+                            st.session_state.item_custom_cols.remove(col_to_delete)
+                            if col_to_delete in st.session_state.item_col_options_history:
+                                del st.session_state.item_col_options_history[col_to_delete]
+                            for idx in st.session_state.item_custom_values:
+                                st.session_state.item_custom_values[idx].pop(col_to_delete, None)
+                            st.success(f"已刪除欄位「{col_to_delete}」及其相關資料。| Field '{col_to_delete}' and related data deleted.")
+                            st.rerun()
 
     with col2:
         st.subheader("1.2 管理欄位分類選項 item_col_options_history")
@@ -116,10 +121,9 @@ if not df_item_c.empty:
                 else:
                     st.write(f"• {field}: _(尚未設定選項 | No options set)_")
             
-            st.divider()
             selected_option_field = st.selectbox("選擇要管理的欄位 | Select Field to Manage", st.session_state.item_custom_cols, key="item_option_field_select")
             
-            st.subheader("➕ 新增分類 Add Options", anchor=False)
+            st.caption("➕ 新增分類 Add Options")
             with st.form("item_add_option_form", clear_on_submit=True, border=False):
                 new_options_raw = st.text_input("輸入新分類，逗號分隔 | Enter new option(s), comma-separated", key="new_item_option_input")
                 add_options = st.form_submit_button("➕ 新增 Add")
@@ -140,22 +144,27 @@ if not df_item_c.empty:
                     if not added and not skipped:
                         st.warning("未輸入有效分類。| No valid options entered.")
             
-            st.divider()
-            st.subheader("🗑️ 刪除分類 Delete Option", anchor=False)
-            history_opts = st.session_state.item_col_options_history.get(selected_option_field, [])
-            if history_opts:
-                opt_to_delete = st.selectbox("選擇要刪除的分類 | Select Option to Delete", [""] + history_opts, key="item_delete_option_select")
-                if opt_to_delete:
-                    if st.button("⚠️ 確認刪除 Confirm Delete", key=f"item_delete_option_btn_{selected_option_field}_{opt_to_delete}"):
-                        st.session_state.item_col_options_history[selected_option_field].remove(opt_to_delete)
-                        for idx in st.session_state.item_custom_values:
-                            if selected_option_field in st.session_state.item_custom_values[idx]:
-                                if st.session_state.item_custom_values[idx][selected_option_field] == opt_to_delete:
-                                    del st.session_state.item_custom_values[idx][selected_option_field]
-                        st.success(f"已刪除分類「{opt_to_delete}」及其相關值。| Option '{opt_to_delete}' and related values deleted.")
-                        st.rerun()
-            else:
-                st.info("此欄位尚無分類可刪除。| No options to delete for this field.")
+            with st.expander("⚙️ 進階操作 Advanced Operations"):
+                st.caption("刪除分類 Delete Option")
+                history_opts = st.session_state.item_col_options_history.get(selected_option_field, [])
+                if history_opts:
+                    opt_to_delete = st.selectbox("選擇要刪除的分類 | Select Option to Delete", [""] + history_opts, key="item_delete_option_select")
+                    if opt_to_delete:
+                        affected_count = sum(1 for idx in st.session_state.item_custom_values if st.session_state.item_custom_values.get(idx, {}).get(selected_option_field) == opt_to_delete)
+                        st.warning(f"此分類已被 {affected_count} 題使用，刪除後這些題目的值會被清空。| This option is used by {affected_count} question(s). Their values will be cleared.")
+                        
+                        confirm_delete_opt = st.checkbox("我明白刪除後不能復原 I understand deletion is irreversible", key=f"confirm_delete_opt_{selected_option_field}_{opt_to_delete}")
+                        if confirm_delete_opt:
+                            if st.button("⚠️ 確認刪除分類 Confirm Delete Option", key=f"item_delete_option_btn_{selected_option_field}_{opt_to_delete}"):
+                                st.session_state.item_col_options_history[selected_option_field].remove(opt_to_delete)
+                                for idx in st.session_state.item_custom_values:
+                                    if selected_option_field in st.session_state.item_custom_values[idx]:
+                                        if st.session_state.item_custom_values[idx][selected_option_field] == opt_to_delete:
+                                            del st.session_state.item_custom_values[idx][selected_option_field]
+                                st.success(f"已刪除分類「{opt_to_delete}」及其相關值。| Option '{opt_to_delete}' and related values deleted.")
+                                st.rerun()
+                else:
+                    st.info("此欄位尚無分類可刪除。| No options to delete for this field.")
 
     with col3:
         st.subheader("1.3 為題目填入分類 item_custom_values")
@@ -215,6 +224,7 @@ if not df_item_c.empty:
                 st.session_state["item_save_note"] = f"已為以下題目儲存分類設定 | Saved custom category settings for: {selected_display}"
                 st.session_state.item_clear_inputs = True
                 st.rerun()
+
 
     st.markdown("---")
     st.info("📍 2. 校本自訂分析 School-based Customize Analysis")
