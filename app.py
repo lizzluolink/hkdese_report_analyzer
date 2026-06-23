@@ -130,12 +130,12 @@ def generate_groq_report(language, total_df, item_df, mcq_df, custom_prompt):
 
     client = groq.Client(api_key=api_key)
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": user_message},
         ],
-        max_tokens=800,
+        max_tokens=6500,
         temperature=0.3,
     )
 
@@ -500,7 +500,19 @@ with tab3:
         value=st.session_state.get("custom_report_prompt", default_prompt),
         key="custom_report_prompt",
         height=500,
+        max_chars=1500,
     )
+    
+    # 實時計算字數
+    prompt_length = len(st.session_state.get("custom_report_prompt", default_prompt))
+    col_char_info1, col_char_info2 = st.columns([3, 1])
+    with col_char_info1:
+        st.caption(f"已輸入字符數: {prompt_length} / 1500")
+    with col_char_info2:
+        if prompt_length >= 1500:
+            st.caption("⚠️ 輸入字數達到上限")
+        elif prompt_length >= 1350:
+            st.caption(f"⚠️ 剩餘 {1500 - prompt_length} 字")
 
     try:
         api_key = st.secrets["GROQ_API_KEY"]
