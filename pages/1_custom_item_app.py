@@ -34,8 +34,8 @@ if "item_exp_high" not in st.session_state:
 if "item_exp_inter" not in st.session_state:
     st.session_state.item_exp_inter = 60
 if "item_exp_low" not in st.session_state:
-    st.session_state.item_exp_low = 40
-if "item_sort_levels" not in st.session_state:
+    st.session_state.item_exp_low = 40if "item_preset" not in st.session_state:
+    st.session_state.item_preset = "Custom"if "item_sort_levels" not in st.session_state:
     # Each level is a dict: {"col": column_name, "order": "desc"/"asc"}
     st.session_state.item_sort_levels = [{"col": "row_index", "order": "desc"}]
 
@@ -136,7 +136,7 @@ if not df_item_c.empty:
                         st.info(f"已略過重複: {', '.join(skipped)}")
                     if not added and not skipped:
                         st.warning("未輸入有效分類。| No valid options entered.")
-                        
+
             with st.container(border=True):
                 st.markdown("**欄位下的子類別 | Field Options**")
                 for field in st.session_state.item_custom_cols:
@@ -230,56 +230,74 @@ if not df_item_c.empty:
 
 
     st.markdown("---")
-    st.info("📍 2. 校本自訂分析 School-based Customize Analysis")
+    with st.container():
+        st.subheader("2. 校本自訂分析 School-based Customize Analysis")
+        preset_cols = st.columns([1, 1, 1])
+        preset_options = ["Standard", "Conservative", "Ambitious", "Custom"]
+        preset = preset_cols[0].selectbox("Preset 模板 | Preset Template", preset_options, index=preset_options.index(st.session_state.item_preset) if st.session_state.item_preset in preset_options else 0, key="item_preset_option")
+        if preset != st.session_state.item_preset:
+            st.session_state.item_preset = preset
+            if preset == "Standard":
+                st.session_state.item_cutoff_high = 70
+                st.session_state.item_cutoff_low = 30
+                st.session_state.item_exp_high = 80
+                st.session_state.item_exp_inter = 60
+                st.session_state.item_exp_low = 40
+            elif preset == "Conservative":
+                st.session_state.item_cutoff_high = 75
+                st.session_state.item_cutoff_low = 35
+                st.session_state.item_exp_high = 85
+                st.session_state.item_exp_inter = 65
+                st.session_state.item_exp_low = 45
+            elif preset == "Ambitious":
+                st.session_state.item_cutoff_high = 65
+                st.session_state.item_cutoff_low = 25
+                st.session_state.item_exp_high = 75
+                st.session_state.item_exp_inter = 55
+                st.session_state.item_exp_low = 35
 
-    col_attainment, col_expectation = st.columns(2, border=True)
-
-    with col_attainment:
-        st.subheader("2.1 定義「平均得分率」的分類 | Define Level of Attainment")
-        st.caption("此模組用於根據全港日校考生的平均得分率，將題目分為「高得分率（High attainment）」、「中等得分率（Intermediate attainment）」、「低得分率（Low attainment）」三個類別，亦即把學生在每題的表現分為「良好（Good）」、「中等（Intermediate）」及「未如理想（Poor）」。在設定上述三個類別的分界值時，可參考香港考試及評核局於該年發布的HKDSE評核資訊及分析，或按該學科的情況作專業判斷。")
-        col_cut1, col_cut2 = st.columns(2)
-        with col_cut1:
+        cutoff_cols = st.columns(2)
+        with cutoff_cols[0]:
+            st.subheader("2.1 定義「平均得分率」的分類 | Define Level of Attainment")
+            st.caption("根據全港日校考生平均得分率，將題目分成高、中、低三類，以協助學校判斷校本教學重點。")
             st.session_state.item_cutoff_high = st.number_input(
                 "高／中得分率分界值（%）| High/Intermediate attainment Cutoff:",
                 min_value=0, max_value=100, value=st.session_state.item_cutoff_high, step=1,
-                key="item_cutoff_high_input", help="日校得分率高於此值，即視為「高得分率」 | Day school Mean % above this value are classified as 'High attainment'."
+                key="item_cutoff_high_input", help="日校得分率高於此值，即視為「高得分率」。"
             )
-        with col_cut2:
             st.session_state.item_cutoff_low = st.number_input(
                 "中／低得分率分界值（%）| Intermediate/Low attainment Cutoff:",
                 min_value=0, max_value=100, value=st.session_state.item_cutoff_low, step=1,
-                key="item_cutoff_low_input", help="日校得分率低於此值，即視為「低得分率」 | Day school Mean % below this value are classified as 'Low attainment'."
+                key="item_cutoff_low_input", help="日校得分率低於此值，即視為「低得分率」。"
             )
-        st.markdown(f"""
-                   題目得分率設定：高得分率 ≥ {st.session_state.item_cutoff_high}% | 中得分率 {st.session_state.item_cutoff_low}% - {st.session_state.item_cutoff_high}% | 低得分率 ≤ {st.session_state.item_cutoff_low}%
-                   
-                   Question Attainment Levels: High attainment ≥ {st.session_state.item_cutoff_high}% | Intermediate attainment {st.session_state.item_cutoff_low}% - {st.session_state.item_cutoff_high}% | Low attainment ≤{st.session_state.item_cutoff_low}%
-                   """)
-
-    with col_expectation:
-        st.subheader("2.2 校本預期平均得分率 | Define School-based Expected Attainment")
-        st.caption("在設定「全港日校考生的平均得分率」的類別後，此模組讓學校按校本情況進一步設定學生在高、中、低得分率題目的「校本預期平均得分率」，例如是與全港水平一致、較高或較低，以協助分析該校學生在各題中的表現是否達到校本的預期水平。（此「預期平均得分率」即校本的「底線」，當學生在某題的表現低於這條底線時，便代表需要注意及跟進）。")
-        col_exp1, col_exp2, col_exp3 = st.columns(3)
-        with col_exp1:
+            st.markdown(f"**設定:** 高得分率 ≥ {st.session_state.item_cutoff_high}%；中等得分率 {st.session_state.item_cutoff_low}% - {st.session_state.item_cutoff_high}%；低得分率 ≤ {st.session_state.item_cutoff_low}%")
+        with cutoff_cols[1]:
+            st.subheader("2.2 校本預期平均得分率 | Define School-based Expected Attainment")
+            st.caption("依據題目所屬得分率級別，設定校本預期達標門檻，幫助教師判斷哪些題目需要加強跟進。")
             st.session_state.item_exp_high = st.number_input(
                 "預期高得分率題目得分率（%）| Expected for High attainment questions:",
                 min_value=0, max_value=100, value=st.session_state.item_exp_high, step=1,
                 key="item_exp_high_input"
             )
-        with col_exp2:
             st.session_state.item_exp_inter = st.number_input(
                 "預期中等得分率題目得分率（%）| Expected for Intermediate attainment questions:",
                 min_value=0, max_value=100, value=st.session_state.item_exp_inter, step=1,
                 key="item_exp_inter_input"
             )
-        with col_exp3:
             st.session_state.item_exp_low = st.number_input(
                 "預期低得分率題目得分率（%）| Expected for Low attainment questions:",
                 min_value=0, max_value=100, value=st.session_state.item_exp_low, step=1,
                 key="item_exp_low_input"
             )
+            st.caption("示例：若高得分率題目校本預期 80%，該題只要校本得分率 ≥ 80% 則視為達到預期。中/低得分率題目的設定依次類推。")
 
-    st.markdown("---")
+    if st.session_state.item_cutoff_high <= st.session_state.item_cutoff_low:
+        st.error("高／中得分率分界值必須大於中／低得分率分界值，請修正後再查看分析結果。| The high/intermediate cutoff must be greater than the intermediate/low cutoff.")
+        st.stop()
+    if st.session_state.item_exp_high < st.session_state.item_exp_inter:
+        st.warning("警告：高得分率題目的校本預期低於中等得分率題目，請確認設定。| Warning: Expected attainment for High attainment questions is lower than Intermediate attainment questions.")
+    if st.session_state.item_exp_inter < st.session_state.item_exp_low:
+        st.warning("警告：中等得分率題目的校本預期低於低得分率題目，請確認設定。| Warning: Expected attainment for Intermediate attainment questions is lower than Low attainment questions.")
 
     df_display = df_item_c.copy()
     for col in st.session_state.item_custom_cols:
@@ -310,21 +328,67 @@ if not df_item_c.empty:
         else:  # Low attainment
             expected = st.session_state.item_exp_low
 
-        return "Attained" if your_rate_pct >= expected else "Below Expectation"
+        return "達到校本預期 | Attained" if your_rate_pct >= expected else "低於校本預期，建議關注 | Below Expectation"
 
     df_display["School-based Expected Attainment"] = df_display.apply(get_expected_status, axis=1)
 
+    count_high = int((df_display["Day School Attainment"] == "High attainment").sum())
+    count_inter = int((df_display["Day School Attainment"] == "Intermediate attainment").sum())
+    count_low = int((df_display["Day School Attainment"] == "Low attainment").sum())
+    count_attained = int((df_display["School-based Expected Attainment"] == "達到校本預期 | Attained").sum())
+    count_below = int((df_display["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation").sum())
+    total = len(df_display)
+    below_pct = f"{(count_below / total * 100):.1f}%" if total else "0%"
+    count_below_high = int(((df_display["Day School Attainment"] == "High attainment") & (df_display["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation")).sum())
+
+    settings_summary = st.container()
+    with settings_summary:
+        st.info(
+            f"**目前分析設定 Current Analysis Settings:**\n"
+            f"• Preset: {st.session_state.item_preset}\n"
+            f"• High/Intermediate cutoff: {st.session_state.item_cutoff_high}%\n"
+            f"• Intermediate/Low cutoff: {st.session_state.item_cutoff_low}%\n"
+            f"• Expected High: {st.session_state.item_exp_high}%\n"
+            f"• Expected Intermediate: {st.session_state.item_exp_inter}%\n"
+            f"• Expected Low: {st.session_state.item_exp_low}%"
+        )
+
+    kpi_cols = st.columns(4)
+    kpi_cols[0].metric("High attainment 題數", count_high)
+    kpi_cols[1].metric("Intermediate attainment 題數", count_inter)
+    kpi_cols[2].metric("Low attainment 題數", count_low)
+    kpi_cols[3].metric("Below Expectation 題數", count_below, f"{below_pct}")
+
+    review_text = "目前校本預期分析結果已完成。"
+    if count_below:
+        review_text += f" 其中 {count_below} 題未達校本預期。"
+        if count_below_high:
+            review_text += f" 有 {count_below_high} 題屬於高得分率題目，建議優先關注。"
+    else:
+        review_text += " 所有題目均已達到校本預期。"
+    st.info(review_text)
+
+    priority_df = df_display[
+        (df_display["Day School Attainment"] == "High attainment") &
+        (df_display["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation")
+    ]
+    st.subheader("Priority Review Items | 優先跟進題目")
+    if not priority_df.empty:
+        st.dataframe(priority_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("目前沒有高得分率但低於校本預期的題目。| No priority review items found.")
+
     def status_cell_style(val):
         if val == "High attainment":
-            return "background-color: #d4edda"
+            return "background-color: #e8f5e9"
         if val == "Intermediate attainment":
-            return "background-color: #e5dbf7"
+            return "background-color: #e3f2fd"
         if val == "Low attainment":
-            return "background-color: #ffe5cc"
-        if isinstance(val, str) and val.startswith("Attained"):
-            return "background-color: #fff3b3; color: #2e7d32; font-weight: bold"
-        if isinstance(val, str) and val.startswith("Below Expectation"):
-            return "background-color: #fff3b3; color: #8b0000; font-style: italic"
+            return "background-color: #fff8e1"
+        if val == "達到校本預期 | Attained":
+            return "background-color: #d0f0c0; color: #256029; font-weight: bold"
+        if val == "低於校本預期，建議關注 | Below Expectation":
+            return "background-color: #ffebee; color: #b71c1c; font-style: italic"
         return ""
 
     def build_item_export_df(df, for_excel=False):
@@ -368,10 +432,10 @@ if not df_item_c.empty:
             if "School-based Expected Attainment" in columns:
                 col_idx = columns.index("School-based Expected Attainment")
                 expected = row["School-based Expected Attainment"]
-                if isinstance(expected, str) and expected.startswith("Attained"):
-                    style_map[(row_idx, col_idx)] = {"fill": "#fff3b3", "font_color": "#2e7d32", "bold": True}
-                elif isinstance(expected, str) and expected.startswith("Below Expectation"):
-                    style_map[(row_idx, col_idx)] = {"fill": "#fff3b3", "font_color": "#8b0000"}
+                if expected == "達到校本預期 | Attained":
+                    style_map[(row_idx, col_idx)] = {"fill": "#d0f0c0", "font_color": "#256029", "bold": True}
+                elif expected == "低於校本預期，建議關注 | Below Expectation":
+                    style_map[(row_idx, col_idx)] = {"fill": "#ffebee", "font_color": "#b71c1c"}
         return style_map
 
     st.write("📊 **總覽表 (本表跟隨以上設定自動更新) | Overview Table (This table updates automatically based on the above settings)**")
@@ -491,7 +555,7 @@ if not df_item_c.empty:
                 temp_sort_cols.append(temp_col)
                 ascending_list.append(ascending)
             elif col == "School-based Expected Attainment":
-                rank_map = {"Attained": 2, "Below Expectation": 1}
+                rank_map = {"達到校本預期 | Attained": 2, "低於校本預期，建議關注 | Below Expectation": 1}
                 temp_col = f"___item_sort_key_{idx}"
                 final_df[temp_col] = final_df[col].map(rank_map).fillna(0)
                 sort_by_list.append(temp_col)
