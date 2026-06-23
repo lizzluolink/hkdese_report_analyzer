@@ -34,8 +34,10 @@ if "item_exp_high" not in st.session_state:
 if "item_exp_inter" not in st.session_state:
     st.session_state.item_exp_inter = 60
 if "item_exp_low" not in st.session_state:
-    st.session_state.item_exp_low = 40if "item_preset" not in st.session_state:
-    st.session_state.item_preset = "Custom"if "item_sort_levels" not in st.session_state:
+    st.session_state.item_exp_low = 40
+if "item_preset" not in st.session_state:
+    st.session_state.item_preset = "Custom"
+if "item_sort_levels" not in st.session_state:
     # Each level is a dict: {"col": column_name, "order": "desc"/"asc"}
     st.session_state.item_sort_levels = [{"col": "row_index", "order": "desc"}]
 
