@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 import os
 import urllib.request
@@ -19,6 +20,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # Register a Unicode CJK-capable font for Chinese glyphs.
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def _register_font(path, name):
     try:
         pdfmetrics.registerFont(TTFont(name, path))
@@ -26,65 +30,95 @@ def _register_font(path, name):
     except Exception:
         return False
 
-# Try to find common CJK fonts on the system
+
+def _streamlit_context_available():
+    try:
+        from streamlit.runtime.scriptrunner.script_run_context import get_script_run_ctx
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+
+def _log_info(message):
+    logger.info(message)
+    if _streamlit_context_available():
+        try:
+            st.info(message)
+        except Exception:
+            pass
+
+
+def _log_error(message):
+    logger.error(message)
+    if _streamlit_context_available():
+        try:
+            st.error(message)
+        except Exception:
+            pass
+
+
+# Try to find a Traditional Chinese-capable CJK font on the system
 DEFAULT_FONT = None
 DEFAULT_BOLD_FONT = None
 DEFAULT_ITALIC_FONT = None
+DEFAULT_FONT_SOURCE = None
 
-system_candidates = [
-    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.otf',
-    '/usr/share/fonts/truetype/NotoSansCJKtc-Regular.otf',
-    '/usr/share/fonts/truetype/NotoSansCJKsc-Regular.otf',
-    '/usr/share/fonts/truetype/arphic/ukai.ttc',
-    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
-    '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+CJK_FONT_CANDIDATES = [
+    ('NotoSansCJKtc', '/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf'),
+    ('NotoSansCJKtc', '/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.otf'),
+    ('SourceHanSansTC', '/usr/share/fonts/opentype/source-han-sans/SourceHanSansTC-Regular.otf'),
+    ('SourceHanSansTC', '/usr/share/fonts/truetype/source-han-sans/SourceHanSansTC-Regular.otf'),
+    ('NotoSansCJK', '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc'),
+    ('NotoSansCJK', '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.otf'),
+    ('WenQuanYiZenHei', '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc'),
+    ('WenQuanYiMicroHei', '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc'),
+    ('ARPLUKai', '/usr/share/fonts/truetype/arphic/ukai.ttc'),
+    ('ARPLUMing', '/usr/share/fonts/truetype/arphic/uming.ttc'),
 ]
 
-found = None
-for p in system_candidates:
-    if os.path.exists(p):
-        low = p.lower()
-        # accept only likely CJK-capable fonts (avoid Dejavu which lacks Chinese glyphs)
-        if any(k in low for k in ('noto', 'cjk', 'wqy', 'arphic', 'sourcehan', 'ukai', 'unifont')):
-            found = p
-            break
 
-if found:
-    # prefer a clear name for registration
-    base_name = 'CustomCJK'
-    if _register_font(found, base_name):
-        DEFAULT_FONT = base_name
-        DEFAULT_BOLD_FONT = base_name
-        DEFAULT_ITALIC_FONT = base_name
+def _find_system_cjk_font():
+    for font_name, font_path in CJK_FONT_CANDIDATES:
+        if os.path.exists(font_path):
+            if _register_font(font_path, font_name):
+                return font_name, font_path
+    return None, None
 
-# Fallback: try to download a Noto Sans CJK subset (from GitHub raw) into workspace
-if not DEFAULT_FONT:
+
+def _download_traditional_cjk_font():
+    # Use a reportlab-compatible TTF font for Traditional Chinese
+    source_url = 'https://github.com/adobe-fonts/source-han-sans/raw/release/Variable/TTF/SourceHanSansTC-VF.ttf'
+    target = '/tmp/SourceHanSansTC-VF.ttf'
     try:
-        noto_url = 'https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf'
-        target = '/tmp/NotoSansSC-Regular.otf'
         if not os.path.exists(target):
-            urllib.request.urlretrieve(noto_url, target)
-        if _register_font(target, 'NotoSansSC'):
-            DEFAULT_FONT = 'NotoSansSC'
-            DEFAULT_BOLD_FONT = 'NotoSansSC'
-            DEFAULT_ITALIC_FONT = 'NotoSansSC'
-    except Exception:
-        DEFAULT_FONT = None
+            urllib.request.urlretrieve(source_url, target)
+        if _register_font(target, 'SourceHanSansTC'):
+            return 'SourceHanSansTC', target
+    except Exception as exc:
+        logger.warning('Failed to download Traditional Chinese font: %s', exc)
+        return None, None
+    return None, None
 
-# Final fallback to DejaVuSans or Helvetica
-if not DEFAULT_FONT:
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-        DEFAULT_FONT = 'DejaVuSans'
-        DEFAULT_BOLD_FONT = 'DejaVuSans-Bold'
-        DEFAULT_ITALIC_FONT = 'DejaVuSans'
-    except Exception:
-        DEFAULT_FONT = 'Helvetica'
-        DEFAULT_BOLD_FONT = 'Helvetica-Bold'
-        DEFAULT_ITALIC_FONT = 'Helvetica'
+
+font_name, font_path = _find_system_cjk_font()
+if not font_name:
+    font_name, font_path = _download_traditional_cjk_font()
+
+if font_name:
+    DEFAULT_FONT = font_name
+    DEFAULT_BOLD_FONT = font_name
+    DEFAULT_ITALIC_FONT = font_name
+    DEFAULT_FONT_SOURCE = font_path
+    debug_message = f'Loaded PDF font: {DEFAULT_FONT} ({DEFAULT_FONT_SOURCE})'
+    _log_info(debug_message)
+else:
+    error_message = (
+        '無法載入支援繁體中文的 PDF 字型。'
+        ' 請安裝 NotoSansCJKtc、SourceHanSansTC、WenQuanYi 或其他繁體中文 CJK 字型，'
+        '或確認應用程式有下載權限。'
+    )
+    _log_error(error_message)
+    raise RuntimeError(error_message)
 
 @st.cache_data
 def extract_item_analysis(file_bytes):

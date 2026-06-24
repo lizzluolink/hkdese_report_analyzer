@@ -38,6 +38,14 @@ if "item_exp_low" not in st.session_state:
 if "item_sort_levels" not in st.session_state:
     # Each level is a dict: {"col": column_name, "order": "desc"/"asc"}
     st.session_state.item_sort_levels = [{"col": "row_index", "order": "desc"}]
+if "item_quick_filter_below" not in st.session_state:
+    st.session_state.item_quick_filter_below = False
+if "item_quick_filter_high" not in st.session_state:
+    st.session_state.item_quick_filter_high = False
+if "item_quick_filter_unassigned" not in st.session_state:
+    st.session_state.item_quick_filter_unassigned = False
+if "item_preset_sort" not in st.session_state:
+    st.session_state.item_preset_sort = "None | 自訂 Custom"
 
 st.page_link("app.py", label="返回主頁 | Main Page", icon="⬅️")
 
@@ -483,58 +491,206 @@ if not df_item_c.empty:
 
     st.markdown("---")
     st.info("↕️ 3. 篩選與排序分析 Filter and Sort Analysis")
+    
+    # ==================== 3.1 篩選 Filter ====================
     st.subheader("3.1 篩選 Filter")
-    f_cols = st.columns(max(len(st.session_state.item_custom_cols) + 2, 2))
+    
+    # --- 常用快捷篩選 Quick Filters ---
+    st.markdown("**⚡ 常用快捷篩選 Quick Filters**")
+    quick_cols = st.columns([1, 1, 1, 1, 0.5])
+    
+    with quick_cols[0]:
+        if st.button("🔴 只看 Below Expectation | 低於預期", key="item_quick_below", use_container_width=True):
+            st.session_state.item_quick_filter_below = True
+            st.session_state.item_quick_filter_high = False
+            st.session_state.item_quick_filter_unassigned = False
+            st.rerun()
+    
+    with quick_cols[1]:
+        if st.button("🟢 只看 High attainment | 高成績", key="item_quick_high", use_container_width=True):
+            st.session_state.item_quick_filter_high = True
+            st.session_state.item_quick_filter_below = False
+            st.session_state.item_quick_filter_unassigned = False
+            st.rerun()
+    
+    with quick_cols[2]:
+        if st.button("❓ 只看未分類 | Unassigned", key="item_quick_unassigned", use_container_width=True):
+            st.session_state.item_quick_filter_unassigned = True
+            st.session_state.item_quick_filter_below = False
+            st.session_state.item_quick_filter_high = False
+            st.rerun()
+    
+    with quick_cols[3]:
+        if st.button("🔄 清除所有篩選 | Clear All", key="item_clear_all_filters", use_container_width=True):
+            st.session_state.item_quick_filter_below = False
+            st.session_state.item_quick_filter_high = False
+            st.session_state.item_quick_filter_unassigned = False
+            st.rerun()
+    
+    with quick_cols[4]:
+        if st.button("⬆️ 重設排序", key="item_reset_sort", use_container_width=True):
+            st.session_state.item_sort_levels = [{"col": "row_index", "order": "desc"}]
+            st.session_state.item_preset_sort = "None | 自訂 Custom"
+            st.rerun()
+    
+    # --- 進階篩選 Advanced Filters ---
+    st.markdown("**🔧 進階篩選 Advanced Filters** (同一欄位內多選 = OR  |  不同欄位間 = AND)")
+    
     active_filters = {}
+    adv_filter_cols = st.columns(max(len(st.session_state.item_custom_cols) + 2, 2))
+    
     for i, col in enumerate(st.session_state.item_custom_cols):
-        with f_cols[i]:
-            u_vals = [x for x in df_display[col].unique() if str(x).strip()]
-            active_filters[col] = st.multiselect(f"{col}", u_vals, key=f"filter_item_{col}")
+        with adv_filter_cols[i]:
+            u_vals = df_display[col].unique()
+            u_vals_list = []
+            has_empty = False
+            for v in u_vals:
+                if str(v).strip() == "":
+                    has_empty = True
+                else:
+                    u_vals_list.append(v)
+            if has_empty:
+                u_vals_list.append("(未設定) | (Unassigned)")
+            u_vals_list.sort(key=lambda x: (x == "(未設定) | (Unassigned)", str(x)))
+            
+            selected = st.multiselect(f"{col}", u_vals_list, key=f"filter_item_{col}", default=[])
+            if selected:
+                filtered_mask = pd.Series([False] * len(df_display), index=df_display.index)
+                for sel_val in selected:
+                    if sel_val == "(未設定) | (Unassigned)":
+                        filtered_mask = filtered_mask | (df_display[col].astype(str).str.strip() == "")
+                    else:
+                        filtered_mask = filtered_mask | (df_display[col] == sel_val)
+                active_filters[col] = filtered_mask
     
-    with f_cols[len(st.session_state.item_custom_cols)]:
-        attainment_vals = [x for x in df_display["Day School Attainment"].unique() if str(x).strip()]
-        active_filters["Day School Attainment"] = st.multiselect("Day School Attainment", attainment_vals, key="filter_item_attainment")
+    with adv_filter_cols[len(st.session_state.item_custom_cols)]:
+        attainment_vals = sorted([x for x in df_display["Day School Attainment"].unique() if str(x).strip()])
+        selected_attainment = st.multiselect("Day School Attainment", attainment_vals, key="filter_item_attainment", default=[])
+        if selected_attainment:
+            active_filters["Day School Attainment"] = df_display["Day School Attainment"].isin(selected_attainment)
     
-    with f_cols[len(st.session_state.item_custom_cols) + 1]:
-        expected_vals = [x for x in df_display["School-based Expected Attainment"].unique() if str(x).strip()]
-        active_filters["School-based Expected Attainment"] = st.multiselect("School-based Expected Attainment", expected_vals, key="filter_item_expected")
+    with adv_filter_cols[len(st.session_state.item_custom_cols) + 1]:
+        expected_vals = sorted([x for x in df_display["School-based Expected Attainment"].unique() if str(x).strip()])
+        selected_expected = st.multiselect("School-based Expected Attainment", expected_vals, key="filter_item_expected", default=[])
+        if selected_expected:
+            active_filters["School-based Expected Attainment"] = df_display["School-based Expected Attainment"].isin(selected_expected)
     
+    # Apply quick filters
+    final_df = df_display.copy()
+    
+    if st.session_state.item_quick_filter_below:
+        final_df = final_df[final_df["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation"]
+        active_filters["[Quick] Below Expectation"] = True
+    
+    if st.session_state.item_quick_filter_high:
+        final_df = final_df[final_df["Day School Attainment"] == "High attainment"]
+        active_filters["[Quick] High attainment"] = True
+    
+    if st.session_state.item_quick_filter_unassigned:
+        unassigned_mask = pd.Series([False] * len(final_df), index=final_df.index)
+        for col in st.session_state.item_custom_cols:
+            unassigned_mask = unassigned_mask | (final_df[col].astype(str).str.strip() == "")
+        final_df = final_df[unassigned_mask]
+        active_filters["[Quick] Unassigned"] = True
+    
+    # Apply advanced filters
+    for col, filter_mask in active_filters.items():
+        if not col.startswith("[Quick]") and isinstance(filter_mask, pd.Series):
+            final_df = final_df[filter_mask]
+    
+    # Display active filters summary
+    st.markdown("**📋 目前已啟用篩選 Active Filters**")
+    filter_summary_parts = []
+    
+    if st.session_state.item_quick_filter_below:
+        filter_summary_parts.append("🔴 Below Expectation")
+    if st.session_state.item_quick_filter_high:
+        filter_summary_parts.append("🟢 High attainment")
+    if st.session_state.item_quick_filter_unassigned:
+        filter_summary_parts.append("❓ Unassigned")
+    
+    for col in st.session_state.item_custom_cols:
+        if col in active_filters and isinstance(active_filters[col], pd.Series):
+            filter_summary_parts.append(f"{col}: 已篩選")
+    
+    if "Day School Attainment" in active_filters and isinstance(active_filters["Day School Attainment"], pd.Series):
+        filter_summary_parts.append("Day School Attainment: 已篩選")
+    
+    if "School-based Expected Attainment" in active_filters and isinstance(active_filters["School-based Expected Attainment"], pd.Series):
+        filter_summary_parts.append("School-based Expected Attainment: 已篩選")
+    
+    if filter_summary_parts:
+        filter_display = " | ".join(filter_summary_parts)
+        st.caption(f"✓ {filter_display}")
+    else:
+        st.caption("無篩選 | No filters")
+    
+    # ==================== 3.2 排序 Sort ====================
     st.subheader("3.2 排序 Sort")
-
+    
     def _rerun_on_sort_change():
         st.session_state["_item_sort_rerun_toggle"] = not st.session_state.get("_item_sort_rerun_toggle", False)
-
-    # Available columns to sort by
-    sort_columns_opts = ["row_index", "Your school Mean %", "Day schools Mean %", "Day School Attainment", "School-based Expected Attainment"]
-
-    add_col, remove_col = st.columns([1, 2], gap="xxsmall")
-    with add_col:
-        if st.button("➕ 新增排序欄 Add Level", key="item_add_sort_level"):
-            if len(st.session_state.item_sort_levels) < 4:
-                st.session_state.item_sort_levels.append({"col": "row_index", "order": "desc"})
-                _rerun_on_sort_change()
-    with remove_col:
-        if st.button("➖ 移除排序欄 Remove Level", key="item_remove_sort_level"):
-            if len(st.session_state.item_sort_levels) > 1:
-                st.session_state.item_sort_levels.pop()
-                _rerun_on_sort_change()
-
-    # Render each sort level
-    for i, level in enumerate(st.session_state.item_sort_levels):
-        cols = st.columns([1, 1])
-        with cols[0]:
-            sel = st.selectbox(f"欄位 Field {i+1}", sort_columns_opts, index=sort_columns_opts.index(level.get("col") if level.get("col") in sort_columns_opts else "row_index"), key=f"item_sort_col_{i}", on_change=_rerun_on_sort_change)
-            st.session_state.item_sort_levels[i]["col"] = sel
-        with cols[1]:
-            order = st.radio("", ["由高至低 | Descending Order", "由低至高 | Ascending Order"], index=0 if level.get("order", "desc") == "desc" else 1, horizontal=True, key=f"item_sort_order_{i}", on_change=_rerun_on_sort_change)
-            st.session_state.item_sort_levels[i]["order"] = "desc" if "由高至低" in order else "asc"
-
-    final_df = df_display.copy()
-    for col, s_filters in active_filters.items():
-        if s_filters:
-            final_df = final_df[final_df[col].isin(s_filters)]
-
-    # Apply multi-level sorting based on session_state.item_sort_levels
+    
+    # Preset sort options
+    preset_sort_options = [
+        "None | 自訂 Custom",
+        "題號順序 | Question Order",
+        "風險優先 | Risk First",
+        "教學關注優先 | Teaching Priority"
+    ]
+    
+    preset_idx = preset_sort_options.index(st.session_state.item_preset_sort) if st.session_state.item_preset_sort in preset_sort_options else 0
+    preset_sort = st.selectbox("預設排序方案 | Preset Sort Schemes", preset_sort_options, index=preset_idx, key="item_preset_sort_select")
+    
+    if preset_sort != st.session_state.item_preset_sort:
+        st.session_state.item_preset_sort = preset_sort
+        if preset_sort == "題號順序 | Question Order":
+            st.session_state.item_sort_levels = [{"col": "row_index", "order": "asc"}]
+        elif preset_sort == "風險優先 | Risk First":
+            st.session_state.item_sort_levels = [
+                {"col": "School-based Expected Attainment", "order": "asc"},
+                {"col": "Your school Mean %", "order": "asc"}
+            ]
+        elif preset_sort == "教學關注優先 | Teaching Priority":
+            st.session_state.item_sort_levels = [
+                {"col": "Day School Attainment", "order": "desc"},
+                {"col": "School-based Expected Attainment", "order": "asc"},
+                {"col": "Your school Mean %", "order": "asc"}
+            ]
+        elif preset_sort == "None | 自訂 Custom":
+            if len(st.session_state.item_sort_levels) == 0:
+                st.session_state.item_sort_levels = [{"col": "row_index", "order": "desc"}]
+        _rerun_on_sort_change()
+    
+    # Manual sort level controls
+    if preset_sort == "None | 自訂 Custom":
+        st.markdown("**🔧 自訂排序層級 Custom Sort Levels**")
+        
+        sort_columns_opts = ["row_index", "Your school Mean %", "Day schools Mean %", "Day School Attainment", "School-based Expected Attainment"]
+        
+        add_col, remove_col = st.columns([1, 2], gap="xxsmall")
+        with add_col:
+            if st.button("➕ 新增排序欄 Add Level", key="item_add_sort_level"):
+                if len(st.session_state.item_sort_levels) < 4:
+                    st.session_state.item_sort_levels.append({"col": "row_index", "order": "desc"})
+                    _rerun_on_sort_change()
+        with remove_col:
+            if st.button("➖ 移除排序欄 Remove Level", key="item_remove_sort_level"):
+                if len(st.session_state.item_sort_levels) > 1:
+                    st.session_state.item_sort_levels.pop()
+                    _rerun_on_sort_change()
+        
+        # Render each sort level
+        for i, level in enumerate(st.session_state.item_sort_levels):
+            cols = st.columns([1, 1])
+            with cols[0]:
+                sel = st.selectbox(f"欄位 Field {i+1}", sort_columns_opts, index=sort_columns_opts.index(level.get("col") if level.get("col") in sort_columns_opts else "row_index"), key=f"item_sort_col_{i}", on_change=_rerun_on_sort_change)
+                st.session_state.item_sort_levels[i]["col"] = sel
+            with cols[1]:
+                order = st.radio("", ["由高至低 | Descending Order", "由低至高 | Ascending Order"], index=0 if level.get("order", "desc") == "desc" else 1, horizontal=True, key=f"item_sort_order_{i}", on_change=_rerun_on_sort_change)
+                st.session_state.item_sort_levels[i]["order"] = "desc" if "由高至低" in order else "asc"
+    
+    # Apply multi-level sorting
     try:
         sort_by_list = []
         ascending_list = []
@@ -543,7 +699,7 @@ if not df_item_c.empty:
             col = lvl.get("col")
             order = lvl.get("order", "desc")
             ascending = True if order == "asc" else False
-
+            
             # Custom handling for categorical ranks
             if col == "Day School Attainment":
                 rank_map = {"High attainment": 3, "Intermediate attainment": 2, "Low attainment": 1}
@@ -553,7 +709,8 @@ if not df_item_c.empty:
                 temp_sort_cols.append(temp_col)
                 ascending_list.append(ascending)
             elif col == "School-based Expected Attainment":
-                rank_map = {"達到校本預期 | Attained": 2, "低於校本預期，建議關注 | Below Expectation": 1}
+                # For risk-first and teaching priority, Below Expectation should come first (lower rank value)
+                rank_map = {"低於校本預期，建議關注 | Below Expectation": 1, "達到校本預期 | Attained": 2}
                 temp_col = f"___item_sort_key_{idx}"
                 final_df[temp_col] = final_df[col].map(rank_map).fillna(0)
                 sort_by_list.append(temp_col)
@@ -564,77 +721,166 @@ if not df_item_c.empty:
                 sort_by_list.append(col)
                 ascending_list.append(ascending)
             else:
-                # fallback lexical ordering
                 sort_by_list.append(col)
                 ascending_list.append(ascending)
-
+        
         if sort_by_list:
-            # use stable sort
             final_df = final_df.sort_values(by=sort_by_list, ascending=ascending_list, kind='mergesort')
+        
         # cleanup temp cols
         for c in temp_sort_cols:
             if c in final_df.columns:
                 final_df = final_df.drop(columns=[c])
     except Exception:
         pass
-
-    st.dataframe(
-        final_df.style
-            .format({
-                "Your school Attem. %": "{:.1f}",
-                "Your school Mean": "{:.1f}",
-                "Your school Mean %": "{:.1%}",
-                "Your school SD": "{:.1f}",
-                "Day schools Attem. %": "{:.1f}",
-                "Day schools Mean": "{:.1f}",
-                "Day schools Mean %": "{:.1%}",
-                "Day schools SD": "{:.1f}"
-            })
-            .apply(
-                lambda col: col.map(status_cell_style),
-                subset=["Day School Attainment", "School-based Expected Attainment"],
-                axis=0
-            ),
-        use_container_width=True, hide_index=True
-    )
-
-    export_df_pdf = build_item_export_df(final_df, for_excel=False)
-    export_df_excel = build_item_export_df(final_df, for_excel=True)
-    style_map = build_item_style_map(final_df)
     
-    # Build dynamic PDF title with filter and sort info
-    filter_info = []
-    for col, s_filters in active_filters.items():
-        if s_filters:
-            filter_info.append(f"{col}: {', '.join(map(str, s_filters))}")
-    filter_str = " | ".join(filter_info) if filter_info else "無篩選 | No filters"
-    # describe sort levels
-    sort_descs = [f"{lvl.get('col')} ({'asc' if lvl.get('order')=='asc' else 'desc'})" for lvl in st.session_state.item_sort_levels]
-    sort_str = " > ".join(sort_descs) if sort_descs else "row_index (desc)"
-    pdf_title = f"項目分析 | Item Analysis | {filter_str} | Sort: {sort_str}"
+    # ==================== 篩選結果摘要 Filtered Result Summary ====================
+    st.markdown("**📊 篩選結果摘要 Filtered Result Summary**")
     
-    pdf_bytes = convert_df_to_pdf(export_df_pdf, style_map, title=pdf_title)
-    excel_bytes = convert_df_to_styled_excel(export_df_excel, style_map, sheet_name="Item Filtered")
-
-    col_pdf, col_excel = st.columns(2)
-    with col_pdf:
-        st.download_button(
-            label="📄 下載 PDF 篩選表 | Download Filtered PDF",
-            data=pdf_bytes,
-            file_name=f"{source_name.replace('.pdf', '')}_ItemFiltered.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            type="primary",
+    total_filtered = len(final_df)
+    count_below_filtered = int((final_df["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation").sum())
+    count_attained_filtered = int((final_df["School-based Expected Attainment"] == "達到校本預期 | Attained").sum())
+    
+    summary_cols = st.columns(3)
+    with summary_cols[0]:
+        st.metric("目前篩選題數 | Total Filtered", total_filtered)
+    with summary_cols[1]:
+        st.metric("Below Expectation 題數", count_below_filtered)
+    with summary_cols[2]:
+        st.metric("Attained 題數", count_attained_filtered)
+    
+    # Find most concerned custom column classification
+    if st.session_state.item_custom_cols and total_filtered > 0:
+        most_below_col = None
+        most_below_val = None
+        most_below_count = 0
+        
+        for col in st.session_state.item_custom_cols:
+            for val in final_df[col].unique():
+                if str(val).strip() != "":
+                    mask = (final_df[col] == val) & (final_df["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation")
+                    count = mask.sum()
+                    if count > most_below_count:
+                        most_below_count = count
+                        most_below_col = col
+                        most_below_val = val
+        
+        if most_below_col and most_below_count > 0:
+            st.info(f"⚠️ 最值得關注 | Most concerning: **{most_below_col}** 中的 **{most_below_val}** 有 **{most_below_count}** 題低於預期")
+    
+    # ==================== 分組檢視 Group Summary ====================
+    st.markdown("**📈 分組檢視 Group Summary**")
+    
+    group_cols_opts = st.session_state.item_custom_cols + ["Day School Attainment", "School-based Expected Attainment"]
+    
+    if group_cols_opts:
+        selected_group_col = st.selectbox("選擇分組欄位 | Select Group Column", group_cols_opts, key="item_group_select")
+        
+        if selected_group_col:
+            group_summary_data = []
+            
+            for group_val in sorted(final_df[selected_group_col].unique()):
+                group_df = final_df[final_df[selected_group_col] == group_val]
+                group_count = len(group_df)
+                group_below = int((group_df["School-based Expected Attainment"] == "低於校本預期，建議關注 | Below Expectation").sum())
+                group_attained = int((group_df["School-based Expected Attainment"] == "達到校本預期 | Attained").sum())
+                
+                display_val = group_val if str(group_val).strip() != "" else "(未設定) | (Unassigned)"
+                group_summary_data.append({
+                    "分組 | Group": display_val,
+                    "題數 | Count": group_count,
+                    "Below Expectation": group_below,
+                    "Attained": group_attained
+                })
+            
+            if group_summary_data:
+                group_summary_df = pd.DataFrame(group_summary_data)
+                st.dataframe(group_summary_df, use_container_width=True, hide_index=True)
+            else:
+                st.info(f"此分組欄位沒有資料 | No data for this group column")
+    else:
+        st.info("尚未建立任何自訂欄位，無法進行分組檢視 | No custom columns created yet")
+    
+    # ==================== 篩選結果表格 Filtered Results Table ====================
+    st.write("📋 **篩選結果表 (Filtered Results Table)**")
+    
+    if total_filtered > 0:
+        st.dataframe(
+            final_df.style
+                .format({
+                    "Your school Attem. %": "{:.1f}",
+                    "Your school Mean": "{:.1f}",
+                    "Your school Mean %": "{:.1%}",
+                    "Your school SD": "{:.1f}",
+                    "Day schools Attem. %": "{:.1f}",
+                    "Day schools Mean": "{:.1f}",
+                    "Day schools Mean %": "{:.1%}",
+                    "Day schools SD": "{:.1f}"
+                })
+                .apply(
+                    lambda col: col.map(status_cell_style),
+                    subset=["Day School Attainment", "School-based Expected Attainment"],
+                    axis=0
+                ),
+            use_container_width=True, hide_index=True
         )
-    with col_excel:
-        st.download_button(
-            label="📥 下載 Excel 篩選表 | Download Filtered Excel",
-            data=excel_bytes,
-            file_name=f"{source_name.replace('.pdf', '')}_ItemFiltered.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            type="primary",
-        )
+    else:
+        st.info("目前篩選無結果 | No results match current filters")
+    
+    # ==================== 匯出 Export ====================
+    if total_filtered > 0:
+        export_df_pdf = build_item_export_df(final_df, for_excel=False)
+        export_df_excel = build_item_export_df(final_df, for_excel=True)
+        style_map = build_item_style_map(final_df)
+        
+        # Build dynamic PDF title with filter and sort info
+        filter_info = []
+        if st.session_state.item_quick_filter_below:
+            filter_info.append("Below Expectation")
+        if st.session_state.item_quick_filter_high:
+            filter_info.append("High attainment")
+        if st.session_state.item_quick_filter_unassigned:
+            filter_info.append("Unassigned")
+        
+        for col in st.session_state.item_custom_cols:
+            if col in active_filters and isinstance(active_filters[col], pd.Series):
+                filter_info.append(f"{col}: selected")
+        
+        if "Day School Attainment" in active_filters and isinstance(active_filters["Day School Attainment"], pd.Series):
+            filter_info.append("Day School Attainment: selected")
+        
+        if "School-based Expected Attainment" in active_filters and isinstance(active_filters["School-based Expected Attainment"], pd.Series):
+            filter_info.append("School-based Expected Attainment: selected")
+        
+        filter_str = " | ".join(filter_info) if filter_info else "No filters"
+        
+        # describe sort levels
+        sort_descs = [f"{lvl.get('col')} ({'asc' if lvl.get('order')=='asc' else 'desc'})" for lvl in st.session_state.item_sort_levels]
+        sort_str = " > ".join(sort_descs) if sort_descs else "row_index (desc)"
+        pdf_title = f"項目分析 | Item Analysis | Filters: {filter_str} | Sort: {sort_str}"
+        
+        pdf_bytes = convert_df_to_pdf(export_df_pdf, style_map, title=pdf_title)
+        excel_bytes = convert_df_to_styled_excel(export_df_excel, style_map, sheet_name="Item Filtered")
+        
+        col_pdf, col_excel = st.columns(2)
+        with col_pdf:
+            st.download_button(
+                label="📄 下載 PDF 篩選表 | Download Filtered PDF",
+                data=pdf_bytes,
+                file_name=f"{source_name.replace('.pdf', '')}_ItemFiltered.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+            )
+        with col_excel:
+            st.download_button(
+                label="📥 下載 Excel 篩選表 | Download Filtered Excel",
+                data=excel_bytes,
+                file_name=f"{source_name.replace('.pdf', '')}_ItemFiltered.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="primary",
+            )
 
 else:
     st.error("找不到可用的項目分析資料。 | No item analysis data available.")
